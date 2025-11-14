@@ -1,23 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface PickupPointFormProps {
-  onAdd: (point: { name: string; address: string; latitude: number; longitude: number }) => void;
+  onAdd: (point: { name: string; address: string; latitude: number; longitude: number; quantity?: number }) => Promise<void>;
+  editingPoint?: { id: string; name: string; address: string; latitude: number; longitude: number; quantity?: number } | null;
+  onCancelEdit?: () => void;
 }
 
-const PickupPointForm = ({ onAdd }: PickupPointFormProps) => {
+const PickupPointForm = ({ onAdd, editingPoint, onCancelEdit }: PickupPointFormProps) => {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
+  const [quantity, setQuantity] = useState("1");
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Update form when editing point changes
+  useEffect(() => {
+    if (editingPoint) {
+      setName(editingPoint.name);
+      setAddress(editingPoint.address);
+      setLatitude(editingPoint.latitude.toString());
+      setLongitude(editingPoint.longitude.toString());
+      setQuantity((editingPoint.quantity || 1).toString());
+    } else {
+      setName("");
+      setAddress("");
+      setLatitude("");
+      setLongitude("");
+      setQuantity("1");
+    }
+  }, [editingPoint]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name || !address || !latitude || !longitude) {
@@ -29,30 +49,65 @@ const PickupPointForm = ({ onAdd }: PickupPointFormProps) => {
       return;
     }
 
-    onAdd({
-      name,
-      address,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-    });
+    const quantityNum = parseInt(quantity, 10);
+    if (isNaN(quantityNum) || quantityNum < 0) {
+      toast({
+        title: "Error",
+        description: "La cantidad debe ser un número entero positivo",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setName("");
-    setAddress("");
-    setLatitude("");
-    setLongitude("");
+    try {
+      await onAdd({
+        ...(editingPoint && { id: editingPoint.id }),
+        name,
+        address,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        quantity: quantityNum,
+      });
 
-    toast({
-      title: "Punto agregado",
-      description: "El punto de recogida ha sido agregado exitosamente",
-    });
+      if (!editingPoint) {
+        setName("");
+        setAddress("");
+        setLatitude("");
+        setLongitude("");
+        setQuantity("1");
+      }
+
+      toast({
+        title: editingPoint ? "Punto actualizado" : "Punto agregado",
+        description: editingPoint 
+          ? "El punto de recogida ha sido actualizado exitosamente"
+          : "El punto de recogida ha sido agregado exitosamente",
+      });
+    } catch (error) {
+      // Error handling is done in handleAddPickupPoint, but we catch here to prevent unhandled promise rejection
+      console.error("Error adding/updating pickup point:", error);
+    }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Plus className="w-5 h-5" />
-          Agregar Punto de Recogida
+        <CardTitle className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            {editingPoint ? "Editar Punto de Recogida" : "Agregar Punto de Recogida"}
+          </span>
+          {editingPoint && onCancelEdit && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onCancelEdit}
+              className="h-8 w-8"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -99,10 +154,33 @@ const PickupPointForm = ({ onAdd }: PickupPointFormProps) => {
               />
             </div>
           </div>
-          <Button type="submit" className="w-full">
-            <Plus className="w-4 h-4 mr-2" />
-            Agregar Punto
-          </Button>
+          <div>
+            <Label htmlFor="quantity">Cantidad</Label>
+            <Input
+              id="quantity"
+              type="number"
+              min="0"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder="1"
+            />
+          </div>
+          <div className="flex gap-2">
+            {editingPoint && onCancelEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancelEdit}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+            )}
+            <Button type="submit" className={editingPoint ? "flex-1" : "w-full"}>
+              <Plus className="w-4 h-4 mr-2" />
+              {editingPoint ? "Actualizar Punto" : "Agregar Punto"}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

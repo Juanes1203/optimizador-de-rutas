@@ -16,7 +16,7 @@ All colors MUST be HSL.
     --card-foreground: 120 10% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 120 10% 10%;
-    --primary: 142 76% 36%;
+    --primary: 125 70% 44%;
     --primary-foreground: 0 0% 100%;
     --secondary: 47 100% 61%;
     --secondary-foreground: 0 0% 0%;
@@ -28,9 +28,9 @@ All colors MUST be HSL.
     --destructive-foreground: 0 0% 100%;
     --border: 120 30% 90%;
     --input: 120 30% 85%;
-    --ring: 142 76% 36%;
+    --ring: 125 70% 44%;
     --radius: 0.5rem;
-    --chart-1: 142 76% 36%;
+    --chart-1: 125 70% 44%;
     --chart-2: 47 100% 61%;
     --chart-3: 24 100% 58%;
     --chart-4: 280 65% 60%;
@@ -44,7 +44,7 @@ All colors MUST be HSL.
     --card-foreground: 120 10% 95%;
     --popover: 120 10% 15%;
     --popover-foreground: 120 10% 95%;
-    --primary: 142 76% 36%;
+    --primary: 125 70% 44%;
     --primary-foreground: 0 0% 100%;
     --secondary: 47 100% 61%;
     --secondary-foreground: 0 0% 0%;
@@ -56,8 +56,8 @@ All colors MUST be HSL.
     --destructive-foreground: 0 0% 100%;
     --border: 120 10% 25%;
     --input: 120 10% 25%;
-    --ring: 142 76% 36%;
-    --chart-1: 142 76% 36%;
+    --ring: 125 70% 44%;
+    --chart-1: 125 70% 44%;
     --chart-2: 47 100% 61%;
     --chart-3: 24 100% 58%;
     --chart-4: 280 65% 60%;
