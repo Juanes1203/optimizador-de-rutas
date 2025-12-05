@@ -120,17 +120,12 @@ const PickupPointsList = ({ points, onRemove, onPointClick, onEdit }: PickupPoin
             >
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm truncate">{point.name}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {point.address}
-                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}
+                  {typeof point.latitude === 'number' ? point.latitude : String(point.latitude)}, {typeof point.longitude === 'number' ? point.longitude : String(point.longitude)}
                 </p>
-                {point.quantity !== undefined && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Cantidad: {point.quantity}
-                  </p>
-                )}
+                <p className="text-xs font-semibold text-primary mt-1">
+                  Cantidad: {point.quantity !== undefined && point.quantity !== null ? point.quantity : 1}
+                </p>
               </div>
               <div className="flex gap-1 flex-shrink-0">
                 {onEdit && (

@@ -12,10 +12,18 @@ interface PickupPoint {
 }
 
 interface Vehicle {
-  id: string;
+  id?: string;
   name: string;
   capacity?: number;
   max_distance?: number;
+  start_location?: {
+    lon: number;
+    lat: number;
+  };
+  end_location?: {
+    lon: number;
+    lat: number;
+  };
 }
 
 interface MapProps {
@@ -176,7 +184,7 @@ const Map = ({ pickupPoints, routes, vehicles = [], visibleRoutes, onRouteVisibi
           new mapboxgl.Popup({ offset: 25 }).setHTML(
             `<div class="p-2">
               <h3 class="font-bold text-green-600">Ubicación de Inicio</h3>
-              <p class="text-sm">${vehicleStartLocation.lat.toFixed(6)}, ${vehicleStartLocation.lon.toFixed(6)}</p>
+              <p class="text-sm">${vehicleStartLocation.lat}, ${vehicleStartLocation.lon}</p>
             </div>`
           )
         )
@@ -196,7 +204,7 @@ const Map = ({ pickupPoints, routes, vehicles = [], visibleRoutes, onRouteVisibi
           new mapboxgl.Popup({ offset: 25 }).setHTML(
             `<div class="p-2">
               <h3 class="font-bold text-red-600">Ubicación de Fin</h3>
-              <p class="text-sm">${vehicleEndLocation.lat.toFixed(6)}, ${vehicleEndLocation.lon.toFixed(6)}</p>
+              <p class="text-sm">${vehicleEndLocation.lat}, ${vehicleEndLocation.lon}</p>
             </div>`
           )
         )
@@ -223,7 +231,7 @@ const Map = ({ pickupPoints, routes, vehicles = [], visibleRoutes, onRouteVisibi
             `<div class="p-2">
               <h3 class="font-bold">${point.name}</h3>
               ${orderNumber !== undefined ? `<p class="text-sm font-semibold">Orden: ${orderNumber}</p>` : ''}
-              <p class="text-sm">${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}</p>
+              <p class="text-sm">${point.latitude}, ${point.longitude}</p>
               ${point.quantity !== undefined ? `<p class="text-sm">Cantidad: ${point.quantity}</p>` : ''}
             </div>`
           )

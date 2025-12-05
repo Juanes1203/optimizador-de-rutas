@@ -7,7 +7,7 @@ import Map from "@/components/Map";
 import PickupPointForm from "@/components/PickupPointForm";
 import VehicleConfig from "@/components/VehicleConfig";
 import PickupPointsList from "@/components/PickupPointsList";
-import { Play, MapPin, Truck, Route, MousePointerClick, ChevronDown, ChevronUp, Code, ArrowLeft, Plus, History, X, Upload } from "lucide-react";
+import { Play, MapPin, Truck, Route, MousePointerClick, ChevronDown, ChevronUp, Code, ArrowLeft, Plus, History, X, Upload, Trash2 } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CardHeader, CardTitle } from "@/components/ui/card";
@@ -235,17 +235,105 @@ const Index = () => {
   };
 
   const loadPickupPoints = async () => {
+    // Try localStorage first (works without Supabase)
+    try {
+      const stored = localStorage.getItem('pickup_points');
+      if (stored) {
+        const data = JSON.parse(stored);
+        const normalizedData = (data || []).map((point: any) => ({
+          ...point,
+          quantity: point.quantity != null && !isNaN(point.quantity) ? Number(point.quantity) : 1,
+        }));
+        console.log("=== PUNTOS CARGADOS DESDE LOCALSTORAGE ===");
+        console.log(`Total puntos cargados: ${normalizedData.length}`);
+        const pointsWithQty = normalizedData.filter(p => p.quantity > 1);
+        console.log(`Puntos con cantidad > 1: ${pointsWithQty.length}`);
+        
+        if (pointsWithQty.length > 0) {
+          console.log("Ejemplos de puntos con cantidad > 1:", pointsWithQty.slice(0, 5).map(p => ({
+            name: p.name,
+            lat: p.latitude,
+            lon: p.longitude,
+            quantity: p.quantity
+          })));
+        }
+        
+        setPickupPoints(normalizedData);
+        return;
+      }
+    } catch (error) {
+      console.warn("Error loading from localStorage, trying Supabase:", error);
+    }
+
+    // Fallback to Supabase if available
+    try {
     const { data, error } = await supabase.from("pickup_points").select("*");
     if (error) {
       console.error("Error loading pickup points:", error);
       return;
     }
-    // Normalize quantity field - ensure it's always a number (default to 1 if null/undefined)
+      
+      // Check if quantity column exists by checking if any point has the quantity property
+      const hasQuantityColumn = data && data.length > 0 && data.some((p: any) => 'quantity' in p);
+      
+      if (!hasQuantityColumn && data && data.length > 0) {
+        console.warn("⚠️ ADVERTENCIA: La columna 'quantity' no existe en la base de datos");
+        console.warn("Los puntos se mostrarán con cantidad = 1 por defecto");
+        console.warn("Ejecuta este SQL en Supabase para agregar la columna:");
+        console.warn(`
+ALTER TABLE public.pickup_points
+ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+        `);
+      }
+      
+      // Normalize quantity field - preserve the actual quantity value from database
+      // Only default to 1 if truly null/undefined, but keep the actual consolidated count
     const normalizedData = (data || []).map((point: any) => ({
       ...point,
-      quantity: point.quantity != null && !isNaN(point.quantity) ? point.quantity : 1,
-    }));
+        quantity: point.quantity != null && !isNaN(point.quantity) ? Number(point.quantity) : 1,
+      }));
+      
+      console.log("=== PUNTOS CARGADOS DESDE BD ===");
+      console.log(`Total puntos cargados: ${normalizedData.length}`);
+      const pointsWithQty = normalizedData.filter(p => p.quantity > 1);
+      console.log(`Puntos con cantidad > 1: ${pointsWithQty.length}`);
+      
+      // Check specifically for the point the user mentioned
+      const userPoint = normalizedData.find(p => 
+        String(p.latitude) === '4.723551' && String(p.longitude) === '-74.092143'
+      );
+      if (userPoint) {
+        console.log("🔍 PUNTO ESPECÍFICO DEL USUARIO EN CARGADOS:", {
+          id: userPoint.id,
+          name: userPoint.name,
+          lat: userPoint.latitude,
+          lon: userPoint.longitude,
+          quantity: userPoint.quantity,
+          quantityType: typeof userPoint.quantity
+        });
+      } else {
+        console.warn("⚠️ PUNTO ESPECÍFICO DEL USUARIO NO ENCONTRADO EN CARGADOS");
+      }
+      
+      if (pointsWithQty.length > 0) {
+        console.log("Ejemplos de puntos con cantidad > 1:", pointsWithQty.slice(0, 5).map(p => ({
+          name: p.name,
+          lat: p.latitude,
+          lon: p.longitude,
+          quantity: p.quantity
+        })));
+      } else {
+        console.warn("⚠️ ADVERTENCIA: Ningún punto cargado tiene cantidad > 1");
+        console.log("Muestra de primeros 5 puntos:", normalizedData.slice(0, 5).map(p => ({
+          name: p.name,
+          quantity: p.quantity
+        })));
+      }
+      
     setPickupPoints(normalizedData);
+    } catch (supabaseError) {
+      console.warn("Supabase not available, using localStorage only:", supabaseError);
+    }
   };
 
   const loadVehicles = async () => {
@@ -257,124 +345,92 @@ const Index = () => {
     setVehicles(data || []);
   };
 
+  // Helper function to save points to localStorage
+  const savePointsToLocalStorage = (points: PickupPoint[]) => {
+    try {
+      localStorage.setItem('pickup_points', JSON.stringify(points));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
+    }
+  };
+
   const handleAddPickupPoint = async (point: Omit<PickupPoint, "id"> & { id?: string }) => {
     if (editingPickupPoint) {
       // Update existing point
       const { id, ...updateData } = point;
-      // Build update object explicitly to ensure quantity is always included
-      // Quantity should always be set (form defaults to 1 if not provided)
       const quantity = updateData.quantity != null && !isNaN(updateData.quantity) 
         ? Math.max(1, Math.floor(updateData.quantity)) 
         : 1;
-      const dataToUpdate: any = {
+      
+      const updatedPoint: PickupPoint = {
+        ...editingPickupPoint,
         name: updateData.name,
         address: updateData.address,
         latitude: updateData.latitude,
         longitude: updateData.longitude,
-        quantity: quantity, // Always include quantity
+        quantity: quantity,
       };
-      
-      let { data, error } = await supabase
-        .from("pickup_points")
-        .update(dataToUpdate)
-        .eq("id", editingPickupPoint.id)
-        .select()
-        .single();
 
-      // If error is about missing quantity column, retry without quantity
-      if (error && error.code === "PGRST204" && error.message?.includes("quantity")) {
-        console.warn("Quantity column not found, updating without quantity field");
-        const { quantity, ...dataWithoutQuantity } = dataToUpdate;
-        const retryResult = await supabase
+      // Update in localStorage
+      const updatedPoints = pickupPoints.map((p) => (p.id === editingPickupPoint.id ? updatedPoint : p));
+      setPickupPoints(updatedPoints);
+      savePointsToLocalStorage(updatedPoints);
+      
+      // Try Supabase if available (optional)
+      try {
+        await supabase
           .from("pickup_points")
-          .update(dataWithoutQuantity)
-          .eq("id", editingPickupPoint.id)
-          .select()
-          .single();
-        
-        if (retryResult.error) {
-          console.error("Database error:", retryResult.error);
-          toast({
-            title: "Error",
-            description: `No se pudo actualizar el punto de recogida: ${retryResult.error.message}`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        data = retryResult.data;
-        error = null;
-      } else if (error) {
-        console.error("Database error:", error);
-        toast({
-          title: "Error",
-          description: `No se pudo actualizar el punto de recogida: ${error.message}`,
-          variant: "destructive",
-        });
-        return;
+          .update({
+            name: updateData.name,
+            address: updateData.address,
+            latitude: updateData.latitude,
+            longitude: updateData.longitude,
+            quantity: quantity,
+          })
+          .eq("id", editingPickupPoint.id);
+      } catch (error) {
+        console.warn("Supabase update failed (using localStorage):", error);
       }
 
-      if (data) {
-        setPickupPoints(pickupPoints.map((p) => (p.id === editingPickupPoint.id ? data : p)));
         setEditingPickupPoint(null);
         setIsPickupPointDialogOpen(false);
-      }
     } else {
-      // Insert new point - remove id if present since it's auto-generated
+      // Insert new point
       const { id, ...insertData } = point;
-      // Only include quantity if it's defined and not null
-      const dataToInsert: any = {
+      const quantity = insertData.quantity !== undefined && insertData.quantity !== null 
+        ? Math.max(1, Math.floor(insertData.quantity)) 
+        : 1;
+      
+      const newPoint: PickupPoint = {
+        id: `local-${Date.now()}-${Math.random()}`,
         name: insertData.name,
-        address: insertData.address,
+        address: insertData.address || `${insertData.latitude}, ${insertData.longitude}`,
         latitude: insertData.latitude,
         longitude: insertData.longitude,
+        quantity: quantity,
       };
-      if (insertData.quantity !== undefined && insertData.quantity !== null) {
-        dataToInsert.quantity = insertData.quantity;
-      }
+
+      // Add to localStorage
+      const updatedPoints = [...pickupPoints, newPoint];
+      setPickupPoints(updatedPoints);
+      savePointsToLocalStorage(updatedPoints);
       
-      let { data, error } = await supabase
-        .from("pickup_points")
-        .insert([dataToInsert])
-        .select()
-        .single();
-
-      // If error is about missing quantity column, retry without quantity
-      if (error && error.code === "PGRST204" && error.message?.includes("quantity")) {
-        console.warn("Quantity column not found, inserting without quantity field");
-        const { quantity, ...dataWithoutQuantity } = dataToInsert;
-        const retryResult = await supabase
+      // Try Supabase if available (optional)
+      try {
+        await supabase
           .from("pickup_points")
-          .insert([dataWithoutQuantity])
-          .select()
-          .single();
-        
-        if (retryResult.error) {
-          console.error("Database error:", retryResult.error);
-          toast({
-            title: "Error",
-            description: `No se pudo agregar el punto de recogida: ${retryResult.error.message}`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        data = retryResult.data;
-        error = null;
-      } else if (error) {
-        console.error("Database error:", error);
-        toast({
-          title: "Error",
-          description: `No se pudo agregar el punto de recogida: ${error.message}`,
-          variant: "destructive",
-        });
-        return;
+          .insert([{
+            name: insertData.name,
+            address: insertData.address || `${insertData.latitude}, ${insertData.longitude}`,
+            latitude: insertData.latitude,
+            longitude: insertData.longitude,
+            quantity: quantity,
+          }]);
+      } catch (error) {
+        console.warn("Supabase insert failed (using localStorage):", error);
       }
 
-      if (data) {
-        setPickupPoints((prevPoints) => [...prevPoints, data]);
         setIsPickupPointDialogOpen(false);
-      }
     }
   };
 
@@ -388,8 +444,80 @@ const Index = () => {
     setIsPickupPointDialogOpen(false);
   };
 
+  const handleDeleteAllPickupPoints = async () => {
+    if (pickupPoints.length === 0) {
+      toast({
+        title: "Info",
+        description: "No hay puntos para eliminar",
+      });
+      return;
+    }
+
+    // Confirm deletion
+    if (!confirm(`¿Estás seguro de que deseas eliminar todos los ${pickupPoints.length} puntos de recogida? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      // Delete from localStorage first
+      localStorage.removeItem('pickup_points');
+      
+      // Try Supabase if available
+      try {
+        const { error } = await supabase
+          .from("pickup_points")
+          .delete()
+          .neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all
+
+        if (error) {
+          console.warn("Error deleting from Supabase (may not be available):", error);
+        }
+
+        // Also clear routes since they depend on pickup points
+        await supabase
+          .from("routes")
+          .delete()
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+      } catch (supabaseError) {
+        console.warn("Supabase not available, using localStorage only:", supabaseError);
+      }
+
+      // Clear the state
+      setPickupPoints([]);
+      setRoutes([]);
+      setVisibleRoutes(new Set());
+
+      toast({
+        title: "Puntos eliminados",
+        description: `Se eliminaron ${pickupPoints.length} puntos de recogida exitosamente`,
+      });
+    } catch (error) {
+      console.error("Error deleting all pickup points:", error);
+      toast({
+        title: "Error",
+        description: `No se pudieron eliminar los puntos: ${error instanceof Error ? error.message : "Error desconocido"}`,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleExcelUpload = async (file: File) => {
     try {
+      // First, delete all existing pickup points
+      const { error: deleteError } = await supabase
+        .from("pickup_points")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all (using a condition that always matches)
+      
+      if (deleteError) {
+        console.error("Error deleting existing points:", deleteError);
+        // Continue anyway, might be empty table
+      } else {
+        console.log("Puntos existentes eliminados");
+        // Clear the state
+        setPickupPoints([]);
+      }
+
       // Dynamically import xlsx library
       // @ts-ignore - xlsx types may not be available until package is installed
       const XLSX = await import("xlsx").catch(() => {
@@ -426,60 +554,203 @@ const Index = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pointMap: any = {};
       
-      for (const row of jsonData) {
-        const rowData = row as Record<string, any>;
-        
-        // Normalize column names (case-insensitive, handle variations)
-        const latitudeKey = Object.keys(rowData).find(
-          key => key.toLowerCase().trim() === "latitude" || key.toLowerCase().trim() === "lat"
-        );
-        const longitudeKey = Object.keys(rowData).find(
-          key => key.toLowerCase().trim() === "longitude" || key.toLowerCase().trim() === "lon" || key.toLowerCase().trim() === "lng"
-        );
-        const quantityKey = Object.keys(rowData).find(
-          key => key.toLowerCase().trim() === "quantity" || key.toLowerCase().trim() === "cantidad"
+      // First, try to detect column names from the first row
+      const firstRow = jsonData[0] as Record<string, any>;
+      const allKeys = Object.keys(firstRow);
+      
+      // More flexible column name detection (case-insensitive, handles variations and Spanish)
+      const latitudeKey = allKeys.find(
+        key => {
+          const normalized = key.toLowerCase().trim();
+          return normalized === "latitude" || normalized === "lat" || 
+                 normalized === "latitud" || normalized.includes("lat");
+        }
+      );
+      const longitudeKey = allKeys.find(
+        key => {
+          const normalized = key.toLowerCase().trim();
+          return normalized === "longitude" || normalized === "lon" || 
+                 normalized === "lng" || normalized === "longitud" || 
+                 normalized.includes("lon") || normalized.includes("lng");
+        }
+      );
+      const quantityKey = allKeys.find(
+        key => {
+          const normalized = key.toLowerCase().trim();
+          return normalized === "quantity" || normalized === "cantidad" || 
+                 normalized === "qty" || normalized === "q" ||
+                 normalized.includes("cantidad") || normalized.includes("quantity");
+        }
         );
         
         if (!latitudeKey || !longitudeKey) {
-          console.warn("Row missing latitude or longitude:", rowData);
-          continue;
-        }
+        toast({
+          title: "Error",
+          description: `No se encontraron columnas de coordenadas. Buscando: "latitud/latitude" y "longitud/longitude". Columnas encontradas: ${allKeys.join(", ")}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("Columnas detectadas:", { latitudeKey, longitudeKey, quantityKey: quantityKey || "no encontrada" });
+      console.log(`Total de filas en Excel: ${jsonData.length}`);
+
+      // STEP 1: Read and process ALL rows first, counting occurrences
+      let processedRows = 0;
+      let skippedRows = 0;
+      
+      // Map to track occurrences: key -> { lat, lon, count, occurrences }
+      const occurrenceMap: Record<string, {
+        latitude: number;
+        longitude: number;
+        count: number; // Number of times this coordinate appears
+        occurrences: number[]; // Track each occurrence for debugging
+      }> = {};
+      
+      for (const row of jsonData) {
+        const rowData = row as Record<string, any>;
         
         const lat = parseFloat(rowData[latitudeKey]);
         const lon = parseFloat(rowData[longitudeKey]);
-        // Parse quantity, default to 1 if missing or invalid
-        let qty = 1;
-        if (quantityKey) {
-          const parsedQty = parseFloat(rowData[quantityKey]);
-          if (!isNaN(parsedQty) && parsedQty > 0) {
-            qty = Math.floor(parsedQty); // Ensure integer
-          }
-        }
         
+        // Validate coordinates
         if (isNaN(lat) || isNaN(lon)) {
           console.warn("Invalid coordinates in row:", rowData);
+          skippedRows++;
           continue;
         }
         
-        // Round coordinates to 7 decimal places for grouping (about 1.1cm precision)
-        const latKey = lat.toFixed(7);
-        const lonKey = lon.toFixed(7);
-        const key = `${latKey},${lonKey}`;
+        // Validate latitude range (-90 to 90)
+        if (lat < -90 || lat > 90) {
+          console.warn(`Latitude out of range: ${lat}, skipping row:`, rowData);
+          skippedRows++;
+          continue;
+        }
         
-        if (pointMap[key]) {
-          // Sum quantities for duplicate coordinates
-          pointMap[key].quantity += qty;
-          console.log(`Combining duplicate coordinates ${key}: adding quantity ${qty}, total now: ${pointMap[key].quantity}`);
+        // Validate longitude range (-180 to 180)
+        if (lon < -180 || lon > 180) {
+          console.warn(`Longitude out of range: ${lon}, skipping row:`, rowData);
+          skippedRows++;
+          continue;
+        }
+        
+        // Filter points outside Colombia
+        // Colombia coordinates: Latitude: ~4°N to ~12°N, Longitude: ~-79°W to ~-66°W
+        const COLOMBIA_LAT_MIN = 4.0;
+        const COLOMBIA_LAT_MAX = 12.5;
+        const COLOMBIA_LON_MIN = -79.0;
+        const COLOMBIA_LON_MAX = -66.0;
+        
+        if (lat < COLOMBIA_LAT_MIN || lat > COLOMBIA_LAT_MAX || 
+            lon < COLOMBIA_LON_MIN || lon > COLOMBIA_LON_MAX) {
+          console.warn(`Punto fuera de Colombia (lat: ${lat}, lon: ${lon}), omitiendo fila:`, rowData);
+          skippedRows++;
+          continue;
+        }
+        
+        // Use coordinates as key for grouping - use EXACT coordinates as string
+        // Convert to string with full precision to match exact duplicates
+        const key = `${lat},${lon}`;
+        
+        if (occurrenceMap[key]) {
+          // Increment count for duplicate coordinates
+          const oldCount = occurrenceMap[key].count;
+          occurrenceMap[key].count += 1;
+          occurrenceMap[key].occurrences.push(occurrenceMap[key].count);
+          processedRows++;
+          console.log(`[DUPLICADO ENCONTRADO] Clave: ${key}, Cantidad anterior: ${oldCount}, Cantidad nueva: ${occurrenceMap[key].count}`);
         } else {
-          pointMap[key] = {
-            latitude: lat,
-            longitude: lon,
-            quantity: qty,
+          // First time seeing these coordinates
+          occurrenceMap[key] = {
+            latitude: lat, // Store original value
+            longitude: lon, // Store original value
+            count: 1, // Start with 1 occurrence
+            occurrences: [1], // Track first occurrence
           };
+          processedRows++;
+          if (processedRows <= 5 || processedRows % 100 === 0) {
+            console.log(`[NUEVO PUNTO ${processedRows}] Clave: ${key}, Cantidad inicial: 1`);
+          }
         }
       }
       
-      const uniquePoints: PointData[] = Object.values(pointMap);
+      console.log(`Resumen de procesamiento de filas: ${processedRows} procesadas, ${skippedRows} omitidas`);
+      if (skippedRows > 0) {
+        console.log(`⚠️ ${skippedRows} filas fueron omitidas (coordenadas inválidas o fuera de Colombia)`);
+      }
+      console.log(`Total de coordenadas únicas encontradas (solo Colombia): ${Object.keys(occurrenceMap).length}`);
+      
+      // Check for points with count > 1 BEFORE converting
+      const pointsWithCountGreaterThanOne = Object.entries(occurrenceMap).filter(([key, item]) => item.count > 1);
+      console.log(`=== PUNTOS CON MÚLTIPLES APARICIONES: ${pointsWithCountGreaterThanOne.length} ===`);
+      if (pointsWithCountGreaterThanOne.length > 0) {
+        console.log("Primeros 10 puntos con cantidad > 1:");
+        pointsWithCountGreaterThanOne.slice(0, 10).forEach(([key, item]) => {
+          console.log(`  - ${key}: cantidad=${item.count}`);
+        });
+      } else {
+        console.warn("⚠️ NO SE ENCONTRARON PUNTOS DUPLICADOS - Todas las coordenadas son únicas");
+        console.log("Muestra de primeras 10 coordenadas procesadas:");
+        Object.entries(occurrenceMap).slice(0, 10).forEach(([key, item]) => {
+          console.log(`  - ${key}: cantidad=${item.count}`);
+        });
+      }
+      
+      // STEP 2: Convert occurrence map to consolidated points with quantities
+      const uniquePoints: PointData[] = Object.values(occurrenceMap).map((item) => ({
+        latitude: item.latitude,
+        longitude: item.longitude,
+        quantity: item.count, // Quantity = number of times this coordinate appeared
+      }));
+      
+      // Verify quantities are being set correctly
+      const pointsWithQtyGreaterThanOne = uniquePoints.filter(p => p.quantity > 1);
+      console.log(`Puntos únicos con quantity > 1: ${pointsWithQtyGreaterThanOne.length}`);
+      if (pointsWithQtyGreaterThanOne.length > 0) {
+        console.log("Ejemplos de puntos con quantity > 1:", pointsWithQtyGreaterThanOne.slice(0, 5).map(p => ({
+          lat: p.latitude,
+          lon: p.longitude,
+          quantity: p.quantity
+        })));
+      }
+      
+      // Log detailed consolidation info
+      console.log("=== CONSOLIDACIÓN DE PUNTOS ===");
+      const consolidatedPointsList: Array<{key: string, item: any}> = [];
+      Object.entries(occurrenceMap).forEach(([key, item]) => {
+        if (item.count > 1) {
+          consolidatedPointsList.push({key, item});
+          console.log(`✓ Coordenadas ${key}:`);
+          console.log(`  - Lat: ${item.latitude}, Lon: ${item.longitude}`);
+          console.log(`  - Apariciones: ${item.count}`);
+          console.log(`  - Cantidad consolidada: ${item.count}`);
+        }
+      });
+      
+      if (consolidatedPointsList.length === 0) {
+        console.warn("⚠️ ADVERTENCIA: No se encontraron puntos duplicados. Verificando todas las coordenadas...");
+        console.log("Todas las coordenadas procesadas:", Object.entries(occurrenceMap).map(([key, item]) => ({
+          key,
+          lat: item.latitude,
+          lon: item.longitude,
+          count: item.count
+        })));
+      }
+      
+      console.log("=== RESUMEN FINAL ===");
+      console.log(`Total filas en Excel: ${jsonData.length}`);
+      console.log(`Puntos únicos después de consolidar: ${uniquePoints.length}`);
+      console.log(`Puntos consolidados (con cantidad > 1): ${uniquePoints.filter(p => p.quantity > 1).length}`);
+      console.log(`Detalle de TODAS las cantidades:`, uniquePoints.map(p => ({
+        coords: `${p.latitude}, ${p.longitude}`,
+        quantity: p.quantity
+      })));
+      
+      // Show sample of first few points to verify
+      console.log("=== MUESTRA DE PRIMEROS PUNTOS ===");
+      uniquePoints.slice(0, 10).forEach((p, idx) => {
+        console.log(`Punto ${idx + 1}: Lat=${p.latitude}, Lon=${p.longitude}, Cantidad=${p.quantity}`);
+      });
       
       if (uniquePoints.length === 0) {
         toast({
@@ -490,91 +761,220 @@ const Index = () => {
         return;
       }
 
-      // Convert map to array of points
+      // STEP 3: Convert consolidated points to insert format
       const pointsToInsert = uniquePoints.map((point, index) => {
-        // Ensure quantity is always a valid integer >= 1
+        // Quantity is the number of times this coordinate appeared (already consolidated)
         const quantity = Math.max(1, Math.floor(point.quantity || 1));
+        
+        // Keep original coordinates without rounding
+        const lat = point.latitude;
+        const lon = point.longitude;
+        
         return {
-          name: `Punto ${pickupPoints.length + index + 1}`,
-          address: `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`,
-          latitude: point.latitude,
-          longitude: point.longitude,
-          quantity: quantity, // Always set quantity
+          name: `Punto ${index + 1}`,
+          address: `${lat}, ${lon}`,
+          latitude: lat,
+          longitude: lon,
+          quantity: quantity, // This is the consolidated count
         };
       });
 
-      // Log combined points for debugging
-      console.log("Combined points with quantities:", pointsToInsert.map(p => ({
-        coords: `${p.latitude}, ${p.longitude}`,
-        quantity: p.quantity
-      })));
-
-      // Batch insert points
-      let insertedCount = 0;
-      const errors: string[] = [];
-
-      for (const pointData of pointsToInsert) {
-        try {
-          // Always include quantity - it's always calculated and should be >= 1
-          const quantity = Math.max(1, Math.floor(pointData.quantity || 1));
-          const dataToInsert: any = {
-            name: pointData.name,
-            address: pointData.address,
-            latitude: pointData.latitude,
-            longitude: pointData.longitude,
-            quantity: quantity, // Always include quantity in insert
-          };
-
-          let { data, error } = await supabase
-            .from("pickup_points")
-            .insert([dataToInsert])
-            .select()
-            .single();
-
-          // If error is about missing quantity column, retry without quantity
-          if (error && error.code === "PGRST204" && error.message?.includes("quantity")) {
-            const { quantity, ...dataWithoutQuantity } = dataToInsert;
-            const retryResult = await supabase
-              .from("pickup_points")
-              .insert([dataWithoutQuantity])
-              .select()
-              .single();
-            
-            if (retryResult.error) {
-              errors.push(`Error en ${pointData.name}: ${retryResult.error.message}`);
-              continue;
-            }
-            
-            data = retryResult.data;
-            error = null;
-          } else if (error) {
-            errors.push(`Error en ${pointData.name}: ${error.message}`);
-            continue;
-          }
-
-          if (data) {
-            setPickupPoints((prevPoints) => [...prevPoints, data]);
-            insertedCount++;
-          }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : "Error desconocido";
-          errors.push(`Error procesando ${pointData.name}: ${errorMessage}`);
+      // Calculate consolidation stats
+      const totalRows = jsonData.length;
+      const uniquePointsCount = uniquePoints.length;
+      const consolidatedCount = totalRows - uniquePointsCount;
+      const pointsWithMultipleOccurrences = uniquePoints.filter(p => p.quantity > 1).length;
+      
+      // Show detailed summary in console
+      console.log("=== PUNTOS A INSERTAR ===");
+      pointsToInsert.forEach((p, idx) => {
+        if (p.quantity > 1) {
+          console.log(`Punto ${idx + 1}: ${p.latitude}, ${p.longitude} - Cantidad: ${p.quantity} (consolidado)`);
         }
+      });
+      
+      console.log("=== ESTADÍSTICAS FINALES ===");
+      console.log(`Total filas procesadas: ${processedRows}`);
+      console.log(`Puntos únicos: ${uniquePointsCount}`);
+      console.log(`Puntos con múltiples apariciones: ${pointsWithMultipleOccurrences}`);
+      console.log(`Total consolidaciones: ${consolidatedCount}`);
+
+      // Batch insert ALL points at once
+      if (pointsToInsert.length === 0) {
+        toast({
+          title: "Error",
+          description: "No se encontraron puntos válidos para insertar",
+          variant: "destructive",
+        });
+        return;
       }
 
-      // Show results
-      if (errors.length > 0) {
-        toast({
-          title: "Carga parcialmente completada",
-          description: `Se agregaron ${insertedCount} puntos. ${errors.length} errores encontrados.`,
-          variant: "default",
-        });
-        console.error("Errors during Excel upload:", errors);
+      // Prepare all data for batch insert
+      // ALWAYS include quantity - it's the consolidated count from occurrences
+      const allDataToInsert = pointsToInsert.map((pointData) => {
+        // Keep original coordinates without modification
+        const lat = pointData.latitude;
+        const lon = pointData.longitude;
+        
+        // Validate final values are within range
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+          console.error(`Invalid coordinates: lat=${lat}, lon=${lon}`);
+          throw new Error(`Coordenadas inválidas: latitud ${lat}, longitud ${lon}`);
+        }
+        
+        // Quantity is the consolidated count (number of times this coordinate appeared)
+          const quantity = Math.max(1, Math.floor(pointData.quantity || 1));
+        
+        const baseData: any = {
+            name: pointData.name,
+            address: pointData.address,
+          latitude: lat,
+          longitude: lon,
+          quantity: quantity, // ALWAYS include quantity - it's the consolidated count
+        };
+        
+        if (quantity > 1) {
+          console.log(`🔵 PUNTO CON CANTIDAD > 1: ${pointData.name} - Lat: ${lat}, Lon: ${lon}, Cantidad: ${quantity}`);
+        }
+        
+        return baseData;
+      });
+
+      // Log what we're about to insert
+      console.log("=== ANTES DE INSERTAR ===");
+      console.log(`Total puntos a insertar: ${allDataToInsert.length}`);
+      const pointsWithQty = allDataToInsert.filter(p => p.quantity > 1);
+      console.log(`Puntos con cantidad > 1: ${pointsWithQty.length}`);
+      if (pointsWithQty.length > 0) {
+        console.log("Ejemplos de puntos con cantidad > 1:", pointsWithQty.slice(0, 5).map(p => ({
+          name: p.name,
+          lat: p.latitude,
+          lon: p.longitude,
+          quantity: p.quantity
+        })));
       } else {
+        console.warn("⚠️ ADVERTENCIA: No hay puntos con cantidad > 1 para insertar");
+      }
+      
+      // Save to localStorage (works without Supabase)
+      const pointsWithIds = allDataToInsert.map((point, index) => ({
+        ...point,
+        id: `local-${Date.now()}-${index}`, // Generate unique ID
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+      
+      // Save to localStorage
+      localStorage.setItem('pickup_points', JSON.stringify(pointsWithIds));
+      console.log("=== PUNTOS GUARDADOS EN LOCALSTORAGE ===");
+      console.log(`Total puntos guardados: ${pointsWithIds.length}`);
+      const pointsWithQtySaved = pointsWithIds.filter(p => p.quantity > 1);
+      console.log(`Puntos con cantidad > 1: ${pointsWithQtySaved.length}`);
+      
+      if (pointsWithQtySaved.length > 0) {
+        console.log("✅ Puntos guardados con cantidad > 1:", pointsWithQtySaved.slice(0, 5).map(p => ({
+          name: p.name,
+          quantity: p.quantity
+        })));
+      }
+      
+      // Try Supabase if available (optional)
+      let insertedData: any[] | null = null;
+      let insertError: any = null;
+      
+      try {
+        const firstAttempt = await supabase
+          .from("pickup_points")
+          .insert(allDataToInsert)
+          .select();
+        
+        insertedData = firstAttempt.data;
+        insertError = firstAttempt.error;
+        
+        if (insertedData) {
+          console.log("=== TAMBIÉN GUARDADO EN SUPABASE ===");
+          console.log(`Total insertados en Supabase: ${insertedData.length}`);
+        }
+      } catch (error) {
+        console.warn("Supabase no disponible, usando solo localStorage:", error);
+      }
+
+      // If error about quantity column in Supabase, that's OK - we have it in localStorage
+      if (insertError && (insertError.code === "PGRST204" || insertError.message?.includes("quantity"))) {
+        console.warn("⚠️ Supabase no tiene columna 'quantity', pero los datos están guardados en localStorage con cantidad");
+      } else if (insertError) {
+        console.warn("Error en Supabase (pero datos guardados en localStorage):", insertError);
+      }
+
+      const insertedCount = pointsWithIds.length;
+
+      // Verify what was actually saved to localStorage
+      console.log("=== VERIFICACIÓN FINAL DE INSERCIÓN ===");
+      const sampleInserted = pointsWithIds.slice(0, 10);
+      console.log("Muestra de puntos guardados (primeros 10):", sampleInserted.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        lat: p.latitude,
+        lon: p.longitude,
+        quantity: p.quantity,
+        quantityType: typeof p.quantity,
+        hasQuantity: 'quantity' in p
+      })));
+      
+      // Check specifically for the point the user mentioned
+      const userPoint = pointsWithIds.find((p: any) => 
+        String(p.latitude) === '4.723551' && String(p.longitude) === '-74.092143'
+      );
+      if (userPoint) {
+        console.log("🔍 PUNTO ESPECÍFICO DEL USUARIO ENCONTRADO:", {
+          id: userPoint.id,
+          name: userPoint.name,
+          lat: userPoint.latitude,
+          lon: userPoint.longitude,
+          quantity: userPoint.quantity,
+          quantityType: typeof userPoint.quantity
+        });
+      } else {
+        console.warn("⚠️ PUNTO ESPECÍFICO DEL USUARIO NO ENCONTRADO EN INSERTADOS");
+      }
+
+      // Reload pickup points to get updated list (from localStorage)
+      await loadPickupPoints();
+      
+      // Verify points were saved correctly
+      const savedPoints = JSON.parse(localStorage.getItem('pickup_points') || '[]');
+      const savedWithQty = savedPoints.filter((p: any) => p.quantity > 1);
+      console.log(`✅ Puntos guardados en localStorage: ${savedPoints.length}, con cantidad > 1: ${savedWithQty.length}`);
+
+      // Show success message with detailed consolidation info
+      const consolidationDetails = [];
+      if (pointsWithMultipleOccurrences > 0) {
+        consolidationDetails.push(`${pointsWithMultipleOccurrences} puntos con cantidad > 1`);
+      }
+      if (consolidatedCount > 0) {
+        consolidationDetails.push(`${consolidatedCount} duplicados consolidados`);
+      }
+      
+      const consolidationMessage = consolidationDetails.length > 0
+        ? ` (${totalRows} filas → ${insertedCount} puntos únicos. ${consolidationDetails.join(", ")})`
+        : ` (${totalRows} filas procesadas)`;
+      
         toast({
           title: "Archivo cargado exitosamente",
-          description: `Se agregaron ${insertedCount} puntos de recogida (${pointMap.size} únicos después de combinar duplicados)`,
-        });
+        description: `Se agregaron ${insertedCount} puntos de recogida${consolidationMessage}`,
+      });
+      
+      // Log final summary
+      console.log("=== INSERCIÓN COMPLETADA ===");
+      console.log(`Puntos insertados: ${insertedCount}`);
+      const pointsWithQuantity = pointsToInsert.filter(p => p.quantity > 1);
+      if (pointsWithQuantity.length > 0) {
+        console.log(`Puntos con cantidad consolidada (quantity > 1):`, pointsWithQuantity.map(p => ({
+          coords: `${p.latitude}, ${p.longitude}`,
+          quantity: p.quantity
+        })));
+      } else {
+        console.log("No se encontraron puntos con cantidad > 1 (todos los puntos aparecieron solo una vez)");
       }
     } catch (error) {
       console.error("Error processing Excel file:", error);
@@ -681,25 +1081,33 @@ const Index = () => {
   };
 
   const handleRemovePickupPoint = async (pointId: string) => {
-    const { error } = await supabase
+    try {
+      // Remove from localStorage
+      const updatedPoints = pickupPoints.filter((p) => p.id !== pointId);
+      setPickupPoints(updatedPoints);
+      savePointsToLocalStorage(updatedPoints);
+      
+      // Try Supabase if available (optional)
+      try {
+        await supabase
       .from("pickup_points")
       .delete()
       .eq("id", pointId);
+      } catch (error) {
+        console.warn("Supabase delete failed (using localStorage):", error);
+      }
 
-    if (error) {
+      toast({
+        title: "Point removed",
+        description: "El punto de recogida ha sido eliminado exitosamente",
+      });
+    } catch (error) {
       toast({
         title: "Error",
         description: "No se pudo eliminar el punto de recogida",
         variant: "destructive",
       });
-      return;
     }
-
-    setPickupPoints(pickupPoints.filter((p) => p.id !== pointId));
-    toast({
-      title: "Point removed",
-      description: "El punto de recogida ha sido eliminado exitosamente",
-    });
   };
 
   const handleAddVehicle = async (vehicle: Vehicle) => {
@@ -1451,11 +1859,24 @@ const Index = () => {
           <Card className="bg-primary text-primary-foreground">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                   <p className="text-sm opacity-90">Puntos de Recogida</p>
                   <p className="text-4xl font-bold">{pickupPoints.length}</p>
                 </div>
+                <div className="flex flex-col items-end gap-2">
                 <MapPin className="w-12 h-12 opacity-80" />
+                  {pickupPoints.length > 0 && (
+                    <Button
+                      onClick={handleDeleteAllPickupPoints}
+                      variant="destructive"
+                      size="sm"
+                      className="bg-destructive/20 hover:bg-destructive/30 text-destructive-foreground border border-destructive/50"
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Eliminar Todos
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1484,6 +1905,49 @@ const Index = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Excel Upload Section - Prominent at the top */}
+        <Card className="mb-6 border-2 border-dashed border-primary/50 bg-primary/5">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-2">Cargar Puntos desde Excel</h3>
+                <p className="text-sm text-muted-foreground">
+                  Sube un archivo Excel (.xlsx) con columnas de latitud y longitud. 
+                  Los puntos con las mismas coordenadas se consolidarán sumando sus cantidades.
+                </p>
+              </div>
+              <div className="ml-4 flex gap-2">
+                {pickupPoints.length > 0 && (
+                  <Button
+                    onClick={handleDeleteAllPickupPoints}
+                    variant="destructive"
+                    size="lg"
+                    className="bg-destructive hover:bg-destructive/90"
+                  >
+                    <Trash2 className="w-5 h-5 mr-2" />
+                    Eliminar Todos ({pickupPoints.length})
+                  </Button>
+                )}
+                <Button
+                  onClick={() => document.getElementById("excel-upload-main")?.click()}
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Upload className="w-5 h-5 mr-2" />
+                  Subir Archivo Excel
+                </Button>
+                <input
+                  id="excel-upload-main"
+                  type="file"
+                  accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Optimization Controls */}
         <Card className="mb-6">
