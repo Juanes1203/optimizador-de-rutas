@@ -21,7 +21,9 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
     // Strip the function prefix to forward only the Nextmv path
-    const forwardedPath = url.pathname.replace(/^\/?nextmv-proxy/, "") || "/";
+    // The path will be like: /functions/v1/nextmv-proxy/v1/applications/...
+    // We need to remove /functions/v1/nextmv-proxy to get /v1/applications/...
+    const forwardedPath = url.pathname.replace(/^\/functions\/v1\/nextmv-proxy/, "") || url.pathname.replace(/^\/nextmv-proxy/, "") || "/";
     const targetUrl = `${NEXTMV_API_BASE}${forwardedPath}${url.search}`;
 
     const body =
