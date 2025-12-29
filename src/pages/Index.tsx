@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import Map from "@/components/Map";
 import PickupPointForm from "@/components/PickupPointForm";
 import VehicleConfig from "@/components/VehicleConfig";
@@ -62,13 +62,13 @@ const getNextMVApiUrl = (path: string): string => {
     return `/api/nextmv${path}`;
   } else {
     // In production, use Supabase Edge Function proxy
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (supabaseUrl) {
+    if (SUPABASE_URL) {
       // Remove trailing slash from supabaseUrl if present
-      const baseUrl = supabaseUrl.replace(/\/$/, '');
+      const baseUrl = SUPABASE_URL.replace(/\/$/, '');
       return `${baseUrl}/functions/v1/nextmv-proxy${path}`;
     }
     // Fallback to direct URL (will fail with CORS, but better than nothing)
+    console.warn('Supabase URL not found, using direct NextMV API URL (CORS will fail)');
     return `https://api.cloud.nextmv.io${path}`;
   }
 };
