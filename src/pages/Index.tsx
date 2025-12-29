@@ -3056,7 +3056,13 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
     <div className="min-h-screen bg-background">
       <header className="bg-primary text-primary-foreground p-4 shadow-md">
         <div className="container mx-auto flex items-center gap-2">
-          <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain" />
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-0">
+              <span className="text-2xl font-bold text-white">On</span>
+              <span className="text-2xl font-bold text-white/50">Track</span>
+            </div>
+            <span className="text-xs italic text-white/90 -mt-0.5">Tecnología que te acompaña.</span>
+          </div>
         </div>
       </header>
 
