@@ -55,6 +55,24 @@ interface Vehicle {
   };
 }
 
+// Helper function to get NextMV API URL with proxy support
+const getNextMVApiUrl = (path: string): string => {
+  if (import.meta.env.DEV) {
+    // In development, use Vite proxy
+    return `/api/nextmv${path}`;
+  } else {
+    // In production, use Supabase Edge Function proxy
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (supabaseUrl) {
+      // Remove trailing slash from supabaseUrl if present
+      const baseUrl = supabaseUrl.replace(/\/$/, '');
+      return `${baseUrl}/functions/v1/nextmv-proxy${path}`;
+    }
+    // Fallback to direct URL (will fail with CORS, but better than nothing)
+    return `https://api.cloud.nextmv.io${path}`;
+  }
+};
+
 const Index = () => {
   const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -116,18 +134,24 @@ const Index = () => {
     setIsLoadingRuns(true);
     try {
       const NEXTMV_APPLICATION_ID = "workspace-dgxjzzgctd";
-      const NEXTMV_API_KEY = import.meta.env.VITE_NEXTMV_API_KEY || "nxmvv1_lhcoj3zDR:f5d1c365105ef511b4c47d67c6c13a729c2faecd36231d37dcdd2fcfffd03a6813235230";
       
-      const runsUrl = `https://api.cloud.nextmv.io/v1/applications/${NEXTMV_APPLICATION_ID}/runs`;
-      const runsApiUrl = import.meta.env.DEV ? `/api/nextmv/v1/applications/${NEXTMV_APPLICATION_ID}/runs` : runsUrl;
+      const runsApiUrl = getNextMVApiUrl(`/v1/applications/${NEXTMV_APPLICATION_ID}/runs`);
+      
+      // For proxy requests, don't include Authorization header as the proxy handles it
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      };
+      
+      // Only add Authorization header in development (Vite proxy needs it)
+      if (import.meta.env.DEV) {
+        const NEXTMV_API_KEY = import.meta.env.VITE_NEXTMV_API_KEY || "nxmvv1_lhcoj3zDR:f5d1c365105ef511b4c47d67c6c13a729c2faecd36231d37dcdd2fcfffd03a6813235230";
+        headers["Authorization"] = `Bearer ${NEXTMV_API_KEY}`;
+      }
       
       const response = await fetch(runsApiUrl, {
         method: "GET",
-        headers: {
-          "Authorization": `Bearer ${NEXTMV_API_KEY}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
+        headers,
       });
       
       if (!response.ok) {
@@ -166,18 +190,24 @@ const Index = () => {
     
     try {
       const NEXTMV_APPLICATION_ID = "workspace-dgxjzzgctd";
-      const NEXTMV_API_KEY = import.meta.env.VITE_NEXTMV_API_KEY || "nxmvv1_lhcoj3zDR:f5d1c365105ef511b4c47d67c6c13a729c2faecd36231d37dcdd2fcfffd03a6813235230";
       
-      const runUrl = `https://api.cloud.nextmv.io/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}`;
-      const runApiUrl = import.meta.env.DEV ? `/api/nextmv/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}` : runUrl;
+      const runApiUrl = getNextMVApiUrl(`/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}`);
+      
+      // For proxy requests, don't include Authorization header as the proxy handles it
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      };
+      
+      // Only add Authorization header in development (Vite proxy needs it)
+      if (import.meta.env.DEV) {
+        const NEXTMV_API_KEY = import.meta.env.VITE_NEXTMV_API_KEY || "nxmvv1_lhcoj3zDR:f5d1c365105ef511b4c47d67c6c13a729c2faecd36231d37dcdd2fcfffd03a6813235230";
+        headers["Authorization"] = `Bearer ${NEXTMV_API_KEY}`;
+      }
       
       const response = await fetch(runApiUrl, {
         method: "GET",
-        headers: {
-          "Authorization": `Bearer ${NEXTMV_API_KEY}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
+        headers,
       });
       
       if (!response.ok) {
@@ -2479,7 +2509,6 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
       // Store the JSON and endpoint to display (use cleaned version)
       setNextmvJson(cleanPayload);
       const nextmvPath = "/v1/applications/workspace-dgxjzzgctd/runs";
-      const nextmvEndpoint = "/api/nextmv" + nextmvPath; // Use proxy in development
       const nextmvFullUrl = "https://api.cloud.nextmv.io" + nextmvPath; // Full URL for display
       setNextmvEndpoint(nextmvFullUrl);
       
@@ -2509,8 +2538,8 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
         }, 30000);
         
         try {
-          // Use proxy endpoint in development, direct URL in production (if CORS allows)
-          const apiUrl = import.meta.env.DEV ? nextmvEndpoint : nextmvFullUrl;
+          // Use proxy endpoint (development uses Vite proxy, production uses Supabase Edge Function)
+          const apiUrl = getNextMVApiUrl(nextmvPath);
           
           // Convert to JSON string for the request
           const requestBodyString = JSON.stringify(cleanPayload);
@@ -2531,13 +2560,20 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
             fullBody: requestBodyString
           });
           
+          // For proxy requests, don't include Authorization header as the proxy handles it
+          const headers: HeadersInit = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          };
+          
+          // Only add Authorization header in development (Vite proxy needs it)
+          if (import.meta.env.DEV) {
+            headers["Authorization"] = `Bearer ${NEXTMV_API_KEY}`;
+          }
+          
           response = await fetch(apiUrl, {
             method: "POST",
-            headers: {
-              "Authorization": `Bearer ${NEXTMV_API_KEY}`,
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-            },
+            headers,
             body: requestBodyString,
             signal: controller.signal
           });
@@ -2794,13 +2830,20 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
           attempts++;
           
           try {
+            // For proxy requests, don't include Authorization header as the proxy handles it
+            const headers: HeadersInit = {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            };
+            
+            // Only add Authorization header in development (Vite proxy needs it)
+            if (import.meta.env.DEV) {
+              headers["Authorization"] = `Bearer ${NEXTMV_API_KEY}`;
+            }
+            
             const runResponse = await fetch(runApiUrl, {
               method: "GET",
-              headers: {
-                "Authorization": `Bearer ${NEXTMV_API_KEY}`,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-              },
+              headers,
             });
             
             if (!runResponse.ok) {
