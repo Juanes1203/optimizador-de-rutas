@@ -7,7 +7,11 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ||
   (import.meta.env.VITE_SUPABASE_PROJECT_ID 
     ? `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co`
     : 'https://eqphojnrsoxksyaqdswi.supabase.co'); // Fallback to actual project ID
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+// Get Supabase anon key from env
+// If not set, the client will still work but won't be able to make authenticated requests
+// You can get your anon key from: https://supabase.com/dashboard/project/eqphojnrsoxksyaqdswi/settings/api
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
