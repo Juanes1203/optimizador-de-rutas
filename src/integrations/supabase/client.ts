@@ -9,9 +9,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ||
     : 'https://eqphojnrsoxksyaqdswi.supabase.co'); // Fallback to actual project ID
 
 // Get Supabase anon key from env
-// If not set, the client will still work but won't be able to make authenticated requests
-// You can get your anon key from: https://supabase.com/dashboard/project/eqphojnrsoxksyaqdswi/settings/api
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+// If not set, use fallback (for development/testing only - should be set via env in production)
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 
+  'sb_publishable_p93iwBXX_GJ3R77bPq9LJQ_ahJJi_7J'; // Fallback for development
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
