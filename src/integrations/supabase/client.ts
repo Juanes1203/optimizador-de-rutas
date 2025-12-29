@@ -6,7 +6,7 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 
   (import.meta.env.VITE_SUPABASE_PROJECT_ID 
     ? `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co`
-    : 'https://hfirvmmpemmrubtrznvm.supabase.co'); // Fallback to project ID from config.toml
+    : 'https://eqphojnrsoxksyaqdswi.supabase.co'); // Fallback to actual project ID
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 // Import the supabase client like this:
