@@ -2815,10 +2815,9 @@ ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
       if (runId) {
         console.log("Fetching run result for ID:", runId);
         
-        // Build the GET URL for the run
+        // Build the GET URL for the run using the proxy helper
         const NEXTMV_APPLICATION_ID = "workspace-dgxjzzgctd";
-        const runUrl = `https://api.cloud.nextmv.io/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}`;
-        const runApiUrl = import.meta.env.DEV ? `/api/nextmv/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}` : runUrl;
+        const runApiUrl = getNextMVApiUrl(`/v1/applications/${NEXTMV_APPLICATION_ID}/runs/${runId}`);
         
         // Poll for the result every 10 seconds until solution is available
         const pollInterval = 10000; // Poll every 10 seconds
