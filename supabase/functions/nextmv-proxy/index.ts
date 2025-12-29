@@ -18,6 +18,9 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Allow requests without authentication (since we're proxying with our own API key)
+  // This function should be configured with verify_jwt = false in supabase/config.toml
+
   try {
     const url = new URL(req.url);
     // Strip the function prefix to forward only the Nextmv path
